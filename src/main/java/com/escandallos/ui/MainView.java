@@ -5,8 +5,11 @@ import com.escandallos.repository.RecipeRepository;
 import com.escandallos.ui.views.DashboardView;
 import com.escandallos.ui.views.IngredientView;
 import com.escandallos.ui.views.RecipeView;
+import com.escandallos.util.DataSeeder;
 
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
@@ -48,7 +51,30 @@ public class MainView extends BorderPane {
         Button btnRefresh = new Button("🔄 Actualizar Datos");
         btnRefresh.setOnAction(e -> refreshAllData());
 
-        topBar.getChildren().addAll(brandLabel, btnRefresh);
+        Button btnSeed = new Button("🌱 Cargar Catálogo Demo");
+        btnSeed.setOnAction(e -> {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    "¿Desea cargar el catálogo gastronómico completo de ingredientes y escandallos?",
+                    ButtonType.YES, ButtonType.NO);
+            confirm.setTitle("Cargar Catálogo Gastronómico");
+            confirm.setHeaderText("Sincronización de Datos");
+            confirm.showAndWait().ifPresent(res -> {
+                if (res == ButtonType.YES) {
+                    DataSeeder.seedFullCatalog(ingredientRepository, recipeRepository);
+                    refreshAllData();
+                    Alert done = new Alert(Alert.AlertType.INFORMATION,
+                            "Catálogo completo cargado con éxito (" +
+                            ingredientRepository.findAll().size() + " ingredientes, " +
+                            recipeRepository.findAll().size() + " escandallos).",
+                            ButtonType.OK);
+                    done.setTitle("Catálogo Actualizado");
+                    done.setHeaderText("Operación completada");
+                    done.showAndWait();
+                }
+            });
+        });
+
+        topBar.getChildren().addAll(brandLabel, btnSeed, btnRefresh);
         setTop(topBar);
 
         // TabPane Central

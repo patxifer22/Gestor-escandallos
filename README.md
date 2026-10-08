@@ -154,7 +154,7 @@ Gestor-escandallos/
 * **`DatabaseManager`**: Gestiona la conexión centralizada con SQLite (`jdbc:sqlite:data/escandallos.db`), activa las claves foráneas (`PRAGMA foreign_keys = ON;`) y ejecuta el DDL para crear las tablas e índices si no existen.
 * **`IngredientRepository`**: Implementa las operaciones CRUD para ingredientes utilizando `PreparedStatement`, consultas optimizadas e inserciones en lote (*batch*).
 * **`RecipeRepository`**: Gestiona los escandallos y sus líneas de detalle (`recipe_items`) mediante **transacciones atómicas** (`setAutoCommit(false)` y `commit()`), uniendo mediante `JOIN` relacional la información completa del ingrediente al recuperar las recetas.
-* **`DataSeeder`**: Si la base de datos SQLite se encuentra vacía al arrancar, inserta automáticamente ingredientes de alta gastronomía (solomillo de ternera, gamba roja de Dénia, arroz bomba, AOVE, etc.) y dos escandallos completos para tener datos funcionales de inmediato.
+* **`DataSeeder`**: Si la base de datos SQLite se encuentra vacía o incompleta al arrancar (o mediante el botón *🌱 Cargar Catálogo Demo* en la barra superior), inserta o sincroniza automáticamente un catálogo gastronómico completo con más de **50 ingredientes** profesionales y **19 escandallos** detallados clasificados en todas las categorías de carta (*Entrantes, Platos Principales, Guarniciones, Salsas y Bases, Postres y Bebidas*).
 * **`CurrencyFormatter`**: Estandariza la presentación de números a formato europeo (`12,50 €` y `75,00 %`).
 
 ### 3. Capa de Negocio (`com.escandallos.service`)
