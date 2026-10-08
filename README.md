@@ -1,6 +1,6 @@
-# 🍳 Gestor de Escandallos y Control de Costes (JavaFX 21)
+# 🍳 Gestor de Escandallos y Control de Costes (JavaFX 21 + SQLite)
 
-Aplicación de escritorio moderna desarrollada en **Java 21 LTS** con **JavaFX 21** y **Maven**, diseñada para el control integral de costes de materia prima, gestión de mermas/desperdicios, cálculo de escandallos por ración y optimización de márgenes financieros en restauración y hostelería.
+Aplicación de escritorio moderna desarrollada en **Java 21 LTS** con **JavaFX 21**, **Maven** y base de datos relacional **SQLite** mediante **JDBC nativo**, diseñada para el control integral de costes de materia prima, gestión de mermas/desperdicios, cálculo de escandallos por ración y optimización de márgenes financieros en restauración y hostelería.
 
 ---
 
@@ -13,12 +13,13 @@ El objetivo de esta herramienta es:
 2. Calcular el **coste de materia prima por ración** (*Food Cost* unitario).
 3. Sugerir un **Precio de Venta al Público (PVP)** recomendado con IVA según el **margen de beneficio objetivo** del restaurante.
 4. Evaluar el **margen real (%)** y beneficio neto por ración frente al PVP real fijado en la carta del restaurante.
+5. Gestionar la información en una **base de datos relacional robusta (SQLite)** con integridad referencial y transacciones ACID.
 
 ---
 
 ## 🏛️ Arquitectura del Sistema
 
-El proyecto sigue una **arquitectura por capas desacoplada** (*Modelo - Repositorio - Servicio - Vista*), garantizando código limpio, mantenible y fácilmente testeable:
+El proyecto sigue una **arquitectura por capas desacoplada** (*Modelo - Repositorio/DAO - Servicio - Vista*):
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -34,9 +35,9 @@ El proyecto sigue una **arquitectura por capas desacoplada** (*Modelo - Reposito
 └─────────────────────────────────┬────────────────────────────────┘
                                   │
 ┌─────────────────────────────────▼────────────────────────────────┐
-│                   CAPA DE PERSISTENCIA (JSON)                    │
+│             CAPA DE PERSISTENCIA (SQLite JDBC / DAOs)            │
 │      IngredientRepository        │       RecipeRepository        │
-│                JsonStorageUtil   │       DataSeeder              │
+│                DatabaseManager   │       DataSeeder              │
 └─────────────────────────────────┬────────────────────────────────┘
                                   │
 ┌─────────────────────────────────▼────────────────────────────────┐
@@ -47,16 +48,56 @@ El proyecto sigue una **arquitectura por capas desacoplada** (*Modelo - Reposito
 
 ---
 
+## 🗄️ Esquema de la Base de Datos Relacional (SQLite)
+
+La persistencia se gestiona en el archivo local embebido `data/escandallos.db`. Las tablas y relaciones están estructuradas de la siguiente manera:
+
+```
+┌───────────────────────┐             ┌─────────────────────────┐
+│      ingredients      │             │         recipes         │
+├───────────────────────┤             ├─────────────────────────┤
+│ id (PK)         TEXT  │             │ id (PK)           TEXT  │
+│ name            TEXT  │             │ name              TEXT  │
+│ category        TEXT  │             │ category          TEXT  │
+│ purchase_price  REAL  │             │ portions          INT   │
+│ unit            TEXT  │             │ target_margin_pct REAL  │
+│ waste_pct       REAL  │             │ vat_percentage    REAL  │
+│ supplier        TEXT  │             │ real_selling_pvp  REAL  │
+│ allergens       TEXT  │             │ notes             TEXT  │
+└───────────▲───────────┘             └────────────▲────────────┘
+            │                                      │
+            │ 1:N                                  │ 1:N
+            │                                      │
+            └───────────┐             ┌────────────┘
+                        │             │
+                  ┌─────┴─────────────┴─────┐
+                  │      recipe_items       │
+                  ├─────────────────────────┤
+                  │ id (PK AUTO)    INTEGER │
+                  │ recipe_id (FK)  TEXT    │──> ON DELETE CASCADE
+                  │ ingredient_id   TEXT    │──> ON DELETE RESTRICT
+                  │ quantity        REAL    │
+                  │ unit            TEXT    │
+                  └─────────────────────────┘
+```
+
+### Definición DDL de las Tablas e Índices
+* **`ingredients`**: Catálogo de materias primas con precios brutos y porcentajes de merma.
+* **`recipes`**: Datos maestros del plato, rendimiento en raciones, margen objetivo e impuestos.
+* **`recipe_items`**: Tabla de relación que asocia qué ingredientes y en qué cantidades exactas componen cada escandallo.
+* **Integridad referencial y transacciones**: Clave foránea con `ON DELETE CASCADE` en las recetas (si se elimina un escandallo se eliminan sus líneas asociadas en una transacción atómica).
+
+---
+
 ## 📁 Estructura Detallada de Carpetas y Archivos
 
 ```
 Gestor-escandallos/
-├── pom.xml                                 # Configuración Maven (JavaFX 21, Jackson, JUnit 5)
+├── pom.xml                                 # Configuración Maven (JavaFX 21, SQLite JDBC, JUnit 5)
 ├── README.md                               # Documentación integral del proyecto
 ├── .gitignore                              # Archivos y carpetas excluidos de Git
-├── data/                                   # Directorio de persistencia local (archivos JSON)
-│   ├── ingredients.json                    # Base de datos local de ingredientes
-│   └── recipes.json                        # Base de datos local de escandallos
+├── data/                                   # Directorio de persistencia local
+│   └── escandallos.db                      # Base de datos SQLite embebida
 └── src/
     ├── main/
     │   ├── java/
@@ -69,9 +110,10 @@ Gestor-escandallos/
     │   │       │   ├── Recipe.java         # Entidad Escandallo / Receta con lógica financiera
     │   │       │   ├── RecipeItem.java     # Línea de ingrediente con conversión de unidades
     │   │       │   └── Unit.java           # Unidades de medida (KG, G, L, ML, UD)
-    │   │       ├── repository/             # Acceso y persistencia de datos
-    │   │       │   ├── IngredientRepository.java  # CRUD de ingredientes con búsqueda
-    │   │       │   └── RecipeRepository.java      # CRUD de escandallos con filtros
+    │   │       ├── repository/             # Acceso y persistencia de datos (JDBC)
+    │   │       │   ├── DatabaseManager.java       # Conexión, PRAGMA e inicialización DDL de SQLite
+    │   │       │   ├── IngredientRepository.java  # DAO de ingredientes con PreparedStatement
+    │   │       │   └── RecipeRepository.java      # DAO de escandallos con transacciones relacionales
     │   │       ├── service/                # Lógica de cálculo y análisis financiero
     │   │       │   └── CostCalculatorService.java # Métricas globales y análisis de Food Cost
     │   │       ├── ui/                     # Vistas y componentes visuales en JavaFX
@@ -82,17 +124,19 @@ Gestor-escandallos/
     │   │       │       ├── DashboardView.java    # Panel ejecutivo de rentabilidad
     │   │       │       ├── IngredientView.java   # Gestión de ingredientes con modal reactivo
     │   │       │       └── RecipeView.java       # Creador y ficha técnica interactiva
-    │   │       └── util/                   # Utilidades de persistencia y formato
+    │   │       └── util/                   # Utilidades del sistema
     │   │           ├── CurrencyFormatter.java    # Formateo a moneda (€) y porcentajes (%)
-    │   │           ├── DataSeeder.java           # Carga de datos de demostración gastronómicos
-    │   │           └── JsonStorageUtil.java      # Serialización y deserialización JSON con Jackson
+    │   │           └── DataSeeder.java           # Sembrador inicial en SQLite si la BD está vacía
     │   └── resources/
     │       └── css/
     │           └── styles.css              # Hoja de estilos moderna (Dark Theme) para JavaFX
     └── test/
         └── java/
-            └── com/escandallos/service/
-                └── CostCalculatorServiceTest.java # Pruebas unitarias automatizadas JUnit 5
+            └── com/escandallos/
+                ├── repository/
+                │   └── DatabaseRepositoryTest.java   # Pruebas de integración con SQLite JDBC
+                └── service/
+                    └── CostCalculatorServiceTest.java # Pruebas unitarias de cálculo financiero
 ```
 
 ---
@@ -106,33 +150,32 @@ Gestor-escandallos/
 * **`RecipeItem`**: Modela una línea de ingrediente dentro de un escandallo. Cuenta con un conversor automático de unidades (`getQuantityInIngredientUnit()`) que permite especificar ingredientes en gramos (`g`) o mililitros (`ml`) aun cuando el ingrediente fue adquirido en kilogramos (`kg`) o litros (`L`).
 * **`Recipe`**: Es el escandallo completo. Incluye la lista de `RecipeItem`, raciones producidas (*yield*), margen objetivo deseado (%), porcentaje de IVA (ej. 10%) y PVP real en carta. Contiene métodos para calcular el coste total de elaboración, coste por ración, PVP sugerido sin/con IVA, beneficio unitario y margen real.
 
-### 2. Capa de Persistencia (`com.escandallos.repository` y `util`)
-* **`JsonStorageUtil`**: Utilidad que gestiona la lectura y escritura en disco en formato JSON mediante Jackson (`ObjectMapper` con soporte para JavaTime), creando los directorios automáticamente y formateando el JSON con indentación legible.
-* **`IngredientRepository`**: Mantiene en memoria y persiste en `data/ingredients.json` los ingredientes. Permite buscar por texto filtrando en tiempo real.
-* **`RecipeRepository`**: Mantiene y persiste en `data/recipes.json` los escandallos. Permite filtrado por nombre y por categoría de plato.
-* **`DataSeeder`**: Si la aplicación se abre por primera vez y no existen datos, siembra automáticamente ingredientes de alta gastronomía (solomillo de ternera, gamba roja de Dénia, arroz bomba, AOVE, etc.) y dos recetas completas para disponer de una demo inmediata.
-* **`CurrencyFormatter`**: Estandariza la presentación de números a moneda europea (`12,50 €`) y porcentajes (`75,00 %`).
+### 2. Capa de Persistencia Relacional (`com.escandallos.repository` y `util`)
+* **`DatabaseManager`**: Gestiona la conexión centralizada con SQLite (`jdbc:sqlite:data/escandallos.db`), activa las claves foráneas (`PRAGMA foreign_keys = ON;`) y ejecuta el DDL para crear las tablas e índices si no existen.
+* **`IngredientRepository`**: Implementa las operaciones CRUD para ingredientes utilizando `PreparedStatement`, consultas optimizadas e inserciones en lote (*batch*).
+* **`RecipeRepository`**: Gestiona los escandallos y sus líneas de detalle (`recipe_items`) mediante **transacciones atómicas** (`setAutoCommit(false)` y `commit()`), uniendo mediante `JOIN` relacional la información completa del ingrediente al recuperar las recetas.
+* **`DataSeeder`**: Si la base de datos SQLite se encuentra vacía al arrancar, inserta automáticamente ingredientes de alta gastronomía (solomillo de ternera, gamba roja de Dénia, arroz bomba, AOVE, etc.) y dos escandallos completos para tener datos funcionales de inmediato.
+* **`CurrencyFormatter`**: Estandariza la presentación de números a formato europeo (`12,50 €` y `75,00 %`).
 
 ### 3. Capa de Negocio (`com.escandallos.service`)
-* **`CostCalculatorService`**: Expone métodos de agregación y análisis de negocio para la dirección del restaurante:
-  * Conteo total de ingredientes y recetas activas.
+* **`CostCalculatorService`**: Expone métodos de análisis y agregación para la gestión económica del restaurante:
+  * Conteo total de materias primas y escandallos registrados en SQLite.
   * **Food Cost Promedio ponderado (%)** de toda la carta del establecimiento.
-  * Detección del plato con **mayor margen de rentabilidad** y con **menor margen**.
+  * Identificación del plato con **mayor margen de rentabilidad** y con **menor margen**.
 
 ### 4. Capa de Interfaz de Usuario (`com.escandallos.ui`) en JavaFX 21
-* **`App`**: Clase principal que extiende `javafx.application.Application`, asegura la siembra de datos si es necesario, carga `styles.css` y lanza la ventana principal.
-* **`AppLauncher`**: Punto de entrada auxiliar para ejecutar el `.jar` empaquetado sin restricciones de línea de comandos de módulos de JavaFX.
-* **`MainView`**: Contenedor principal de la aplicación (`BorderPane`) con cabecera de marca, botón de sincronización de datos, pestañas `TabPane` y barra de estado inferior.
+* **`App`**: Clase principal que extiende `javafx.application.Application`, inicializa la base de datos SQLite, siembra datos iniciales si procede, carga `styles.css` y despliega la ventana principal.
+* **`AppLauncher`**: Punto de entrada auxiliar para ejecutar el `.jar` empaquetado sin restricciones de módulos.
+* **`MainView`**: Contenedor principal de la aplicación (`BorderPane`) con cabecera de marca, botón de sincronización de datos, pestañas `TabPane` y barra de estado inferior con indicador de conexión a SQLite.
 * **`MetricCard`**: Tarjeta visual reutilizable para los KPIs con barra de color identificativa, título, valor grande y subtítulo.
 * **`DashboardView`**: Panel ejecutivo con las 4 tarjetas KPI principales y una tabla general de escandallos con indicadores visuales de rentabilidad (`✅ Excelente ≥70%`, `⚠️ Aceptable`, `❌ Margen Bajo`).
-* **`IngredientView`**: Tabla con la base de datos de ingredientes, barra de búsqueda en tiempo real y diálogo modal (`Dialog<Ingredient>`) con **cálculo reactivo en vivo** del coste neto según la merma antes de guardar.
+* **`IngredientView`**: Tabla conectada a SQLite con buscador en tiempo real y diálogo modal (`Dialog<Ingredient>`) con **cálculo reactivo en vivo** del coste neto según la merma antes de guardar.
 * **`RecipeView`**: Creador y visor de fichas técnicas y escandallos. Cuenta con un diálogo interactivo donde se añaden ingredientes, cantidades y unidades, recalculando al instante el coste de materia prima, coste por ración, PVP sugerido y margen neto real.
-* **`styles.css`**: Hoja de estilos moderna con temática oscura (paleta basada en colores Catppuccin / Dark Slate), esquinas redondeadas, tablas limpias y transiciones en botones.
+* **`styles.css`**: Hoja de estilos moderna con temática oscura (paleta basada en colores Catppuccin / Dark Slate), esquinas redondeadas y tablas estilizadas.
 
-### 5. Pruebas Unitarias (`src/test/...`)
-* **`CostCalculatorServiceTest`**: Conjunto de pruebas unitarias con JUnit 5 que comprueban rigurosamente:
-  1. El cálculo exacto del coste neto con diferentes porcentajes de merma (0% y 20%).
-  2. La correcta suma de costes, conversión de gramos a kilogramos, cálculo por ración y cálculo del PVP sugerido con IVA del 10%.
+### 5. Pruebas Unitarias y de Integración (`src/test/...`)
+* **`DatabaseRepositoryTest`**: Prueba las operaciones relacionales contra la base de datos SQLite (inserción de ingredientes, recuperación, persistencia de escandallos con ítems dependientes y borrado en cascada).
+* **`CostCalculatorServiceTest`**: Comprueba rigurosamente las fórmulas matemáticas de merma, coste por ración, PVP con IVA y margen neto.
 
 ---
 
@@ -160,12 +203,12 @@ El sistema aplica las fórmulas estándar de control de costes y fijación de pr
 
 ### Comandos de Terminal
 
-1. **Compilar el proyecto y ejecutar las pruebas unitarias**:
+1. **Compilar el proyecto y ejecutar las pruebas unitarias y de base de datos**:
    ```powershell
    mvn clean test
    ```
 
-2. **Ejecutar la aplicación de escritorio (JavaFX)**:
+2. **Ejecutar la aplicación de escritorio (JavaFX + SQLite)**:
    ```powershell
    mvn javafx:run
    ```

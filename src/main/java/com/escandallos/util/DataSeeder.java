@@ -11,7 +11,7 @@ import com.escandallos.repository.RecipeRepository;
 import java.util.List;
 
 /**
- * Carga datos iniciales de demostración si la base de datos JSON está vacía.
+ * Carga datos iniciales de demostración si la base de datos SQLite está vacía.
  */
 public class DataSeeder {
 

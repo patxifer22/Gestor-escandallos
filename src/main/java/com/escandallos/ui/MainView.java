@@ -71,7 +71,7 @@ public class MainView extends BorderPane {
         // Footer Barra de Estado
         HBox statusBar = new HBox();
         statusBar.getStyleClass().add("status-bar");
-        statusLabel = new Label("Estado: Base de Datos local JavaFX cargada correctamente | Persistencia JSON activa");
+        statusLabel = new Label("Estado: Base de Datos SQLite conectada correctamente | Persistencia relacional activa");
         statusLabel.getStyleClass().add("status-text");
         statusBar.getChildren().add(statusLabel);
         setBottom(statusBar);
